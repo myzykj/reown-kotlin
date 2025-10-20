@@ -157,7 +157,19 @@ object WalletKit {
         onSuccess: (Wallet.Params.SessionApprove) -> Unit = {},
         onError: (Wallet.Model.Error) -> Unit,
     ) {
-        val signParams = Sign.Params.Approve(params.proposerPublicKey, params.namespaces.toSign(), params.properties, params.scopedProperties, params.relayProtocol)
+        // Add TRON-specific properties if TRON namespace exists
+        val augmentedSessionProperties = (params.properties?.toMutableMap() ?: mutableMapOf()).apply {
+            if (params.namespaces.containsKey("tron")) {
+                this["tron_method_version"] = "v1"
+            }
+        }
+        val signParams = Sign.Params.Approve(
+            params.proposerPublicKey,
+            params.namespaces.toSign(),
+            augmentedSessionProperties,
+            params.scopedProperties,
+            params.relayProtocol
+        )
         SignClient.approveSession(signParams, { onSuccess(params) }, { error -> onError(Wallet.Model.Error(error.throwable)) })
     }
 
