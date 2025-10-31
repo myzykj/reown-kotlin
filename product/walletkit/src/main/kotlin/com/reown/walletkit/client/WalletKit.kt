@@ -157,7 +157,26 @@ object WalletKit {
         onSuccess: (Wallet.Params.SessionApprove) -> Unit = {},
         onError: (Wallet.Model.Error) -> Unit,
     ) {
-        val signParams = Sign.Params.Approve(params.proposerPublicKey, params.namespaces.toSign(), params.properties, params.scopedProperties, params.relayProtocol)
+        // Augment session properties with namespace-specific properties from config
+        // Only adds properties for namespaces that exist in both params.namespaces and the config file
+        // For example, if params.namespaces contains "tron" and config has "tron" entry,
+        // properties defined for "tron" in SessionProperties.json will be added
+        val augmentedSessionProperties = (params.properties?.toMutableMap() ?: mutableMapOf()).apply {
+            // Get all namespace keys from the session (e.g., "eip155", "tron", etc.)
+            val namespaceKeys = params.namespaces.keys
+            // Retrieve properties from config for namespaces that exist in both params.namespaces and config
+            val additionalProperties = SessionPropertiesConfig.getPropertiesForNamespaces(namespaceKeys)
+            // Merge additional properties into the existing properties map
+            putAll(additionalProperties)
+        }
+        
+        val signParams = Sign.Params.Approve(
+            params.proposerPublicKey,
+            params.namespaces.toSign(),
+            augmentedSessionProperties,
+            params.scopedProperties,
+            params.relayProtocol
+        )
         SignClient.approveSession(signParams, { onSuccess(params) }, { error -> onError(Wallet.Model.Error(error.throwable)) })
     }
 
