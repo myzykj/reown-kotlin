@@ -28,6 +28,8 @@ import com.reown.sign.common.model.vo.proposal.ProposalVO
 import com.reown.sign.common.model.vo.sequence.SessionVO
 import com.reown.sign.engine.model.EngineDO
 import com.reown.sign.engine.model.ValidationError
+import com.reown.sign.common.validator.SignValidator
+import com.reown.sign.engine.model.tvf.TronRequestNormalizer
 import com.reown.sign.json_rpc.model.JsonRpcMethod
 import com.reown.util.Empty
 import java.net.URI
@@ -102,18 +104,20 @@ internal fun ProposalVO.toSessionProposeRequest(): WCRequest =
 internal fun SignParams.SessionRequestParams.toEngineDO(
     request: WCRequest,
     peerAppMetaData: AppMetaData?,
-): EngineDO.SessionRequest =
-    EngineDO.SessionRequest(
+): EngineDO.SessionRequest {
+    val normalizedParams = normalizeRequestParamsIfNeeded(this.request.params, chainId)
+    return EngineDO.SessionRequest(
         topic = request.topic.value,
         chainId = chainId,
         peerAppMetaData = peerAppMetaData,
         request = EngineDO.SessionRequest.JSONRPCRequest(
             id = request.id,
             method = this.request.method,
-            params = this.request.params
+            params = normalizedParams
         ),
         if (this.request.expiryTimestamp != null) Expiry(this.request.expiryTimestamp) else null
     )
+}
 
 @JvmSynthetic
 internal fun SignParams.DeleteParams.toEngineDO(topic: Topic): EngineDO.SessionDelete =
@@ -275,8 +279,28 @@ internal fun ProposalVO.toSessionApproveParams(selfPublicKey: PublicKey): CoreSi
     )
 
 @JvmSynthetic
-internal fun SignParams.SessionRequestParams.toEngineDO(topic: Topic): EngineDO.Request =
-    EngineDO.Request(topic.value, request.method, request.params, chainId)
+internal fun SignParams.SessionRequestParams.toEngineDO(topic: Topic): EngineDO.Request {
+    val normalizedParams = normalizeRequestParamsIfNeeded(request.params, chainId)
+    return EngineDO.Request(topic.value, request.method, normalizedParams, chainId)
+}
+
+/**
+ * Normalizes request params based on the chain namespace to ensure consistent structure.
+ * This function routes to chain-specific normalizers when needed.
+ * Currently supports TRON chain normalization (converts nested format to direct format).
+ * 
+ * @param params The request params JSON string
+ * @param chainId The chainId (e.g., "tron:0x1") to extract namespace from
+ * @return Normalized params for supported chains, or original params for unsupported chains or if parsing fails
+ */
+private fun normalizeRequestParamsIfNeeded(params: String, chainId: String): String {
+    val namespace = SignValidator.getNamespaceKeyFromChainId(chainId)
+    return when (namespace) {
+        "tron" -> TronRequestNormalizer.normalize(params)
+        // Add other chain normalizers here in the future
+        else -> params
+    }
+}
 
 @JvmSynthetic
 internal fun SignParams.EventParams.toEngineDOEvent(): EngineDO.Event =
